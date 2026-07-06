@@ -1,10 +1,17 @@
-// Service worker: owns the Anthropic API key and makes all model calls.
+// Service worker: owns the API key(s) and makes all model calls.
 // Content scripts never see the key directly; they send text chunks here
 // and receive back annotated HTML.
 
-const API_URL = "https://api.anthropic.com/v1/messages";
-const DEFAULT_MODEL = "claude-sonnet-4-5-20250929";
 const MAX_TOKENS = 4096;
+
+const PROVIDERS = {
+  anthropic: {
+    defaultModel: "claude-sonnet-4-5-20250929",
+  },
+  deepseek: {
+    defaultModel: "deepseek-chat",
+  },
+};
 
 const SYSTEM_PROMPT = `你是一个帮助读者快速抓住长文章重点的排版助手。
 你会收到若干个用 <p id="N"> 包裹的段落，N 是段落编号。
@@ -26,54 +33,99 @@ const SYSTEM_PROMPT = `你是一个帮助读者快速抓住长文章重点的排
 直接输出标注后的 HTML，不要有任何其它内容。`;
 
 async function getSettings() {
-  const { apiKey, model } = await chrome.storage.local.get(["apiKey", "model"]);
-  return { apiKey: apiKey || "", model: model || DEFAULT_MODEL };
+  const { provider, anthropic, deepseek } = await chrome.storage.local.get([
+    "provider",
+    "anthropic",
+    "deepseek",
+  ]);
+  const activeProvider = provider || "anthropic";
+  const providerSettings = (activeProvider === "deepseek" ? deepseek : anthropic) || {};
+  return {
+    provider: activeProvider,
+    apiKey: providerSettings.apiKey || "",
+    model: providerSettings.model || PROVIDERS[activeProvider].defaultModel,
+  };
 }
 
-async function analyzeChunk(chunkHtml) {
-  const { apiKey, model } = await getSettings();
-  if (!apiKey) {
-    return { ok: false, error: "尚未设置 API Key，请先在插件设置页填写。" };
-  }
-
-  let response;
-  try {
-    response = await fetch(API_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: MAX_TOKENS,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content: chunkHtml }],
-      }),
-    });
-  } catch (err) {
-    return { ok: false, error: `网络请求失败：${err.message}` };
-  }
+async function callAnthropic(apiKey, model, chunkHtml) {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: MAX_TOKENS,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: "user", content: chunkHtml }],
+    }),
+  });
 
   if (!response.ok) {
-    let detail = "";
-    try {
-      const errBody = await response.json();
-      detail = errBody?.error?.message || "";
-    } catch {
-      // ignore parse failure
-    }
+    const detail = await safeErrorDetail(response);
     return { ok: false, error: `Claude API 返回错误 (${response.status})：${detail}` };
   }
 
   const data = await response.json();
   const text = data?.content?.map((block) => block.text || "").join("") || "";
-  if (!text.trim()) {
-    return { ok: false, error: "模型返回了空结果。" };
-  }
+  if (!text.trim()) return { ok: false, error: "模型返回了空结果。" };
   return { ok: true, html: text };
+}
+
+async function callDeepSeek(apiKey, model, chunkHtml) {
+  const response = await fetch("https://api.deepseek.com/chat/completions", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: MAX_TOKENS,
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: chunkHtml },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const detail = await safeErrorDetail(response);
+    return { ok: false, error: `DeepSeek API 返回错误 (${response.status})：${detail}` };
+  }
+
+  const data = await response.json();
+  const text = data?.choices?.[0]?.message?.content || "";
+  if (!text.trim()) return { ok: false, error: "模型返回了空结果。" };
+  return { ok: true, html: text };
+}
+
+async function safeErrorDetail(response) {
+  try {
+    const errBody = await response.json();
+    return errBody?.error?.message || JSON.stringify(errBody);
+  } catch {
+    return "";
+  }
+}
+
+async function analyzeChunk(chunkHtml) {
+  const { provider, apiKey, model } = await getSettings();
+  if (!apiKey) {
+    return { ok: false, error: "尚未设置 API Key，请先在插件设置页填写。" };
+  }
+
+  try {
+    if (provider === "deepseek") {
+      return await callDeepSeek(apiKey, model, chunkHtml);
+    }
+    return await callAnthropic(apiKey, model, chunkHtml);
+  } catch (err) {
+    return { ok: false, error: `网络请求失败：${err.message}` };
+  }
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

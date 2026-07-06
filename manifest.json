@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "用 Claude API 分析网页文章，自动加粗关键信息、放大重点/缩小次要内容、标注情绪基调，帮助快速抓住重点。",
   "permissions": ["storage", "activeTab", "scripting"],
-  "host_permissions": ["https://api.anthropic.com/*"],
+  "host_permissions": ["https://api.anthropic.com/*", "https://api.deepseek.com/*"],
   "action": {
     "default_popup": "popup.html"
   },

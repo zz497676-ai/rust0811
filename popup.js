@@ -9,7 +9,13 @@ openOptionsLink.addEventListener("click", (e) => {
 });
 
 async function refreshWarning() {
-  const { apiKey } = await chrome.storage.local.get(["apiKey"]);
+  const { provider, anthropic, deepseek } = await chrome.storage.local.get([
+    "provider",
+    "anthropic",
+    "deepseek",
+  ]);
+  const active = provider || "anthropic";
+  const apiKey = (active === "deepseek" ? deepseek : anthropic)?.apiKey;
   warningEl.style.display = apiKey ? "none" : "block";
 }
 

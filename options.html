@@ -16,7 +16,8 @@
         font-weight: 600;
         margin-bottom: 6px;
       }
-      input {
+      input,
+      select {
         width: 100%;
         padding: 8px 10px;
         font-size: 13px;
@@ -37,6 +38,7 @@
       p.hint {
         font-size: 12px;
         color: #59636e;
+        margin-top: -10px;
       }
       #saved {
         font-size: 12px;
@@ -47,16 +49,23 @@
   </head>
   <body>
     <h2>设置</h2>
-    <label for="apiKey">Anthropic API Key</label>
-    <input id="apiKey" type="password" placeholder="sk-ant-..." autocomplete="off" />
+
+    <label for="provider">服务商</label>
+    <select id="provider">
+      <option value="anthropic">Anthropic（Claude）</option>
+      <option value="deepseek">DeepSeek</option>
+    </select>
+
+    <label for="apiKey">API Key</label>
+    <input id="apiKey" type="password" placeholder="sk-..." autocomplete="off" />
     <p class="hint">
-      仅保存在浏览器本地存储中，只会用于从你的浏览器直接请求
-      https://api.anthropic.com。
+      每个服务商的 Key 分开保存，切换服务商不会互相覆盖。仅保存在浏览器本地存储，
+      只用于从你的浏览器直接请求对应服务商的 API。
     </p>
 
     <label for="model">模型 ID</label>
-    <input id="model" type="text" placeholder="例如 claude-sonnet-4-5-20250929" />
-    <p class="hint">填写你在 Anthropic 账号下可用的模型 ID，具体请参考 Anthropic 官方文档。</p>
+    <input id="model" type="text" placeholder="例如 claude-sonnet-4-5-20250929 / deepseek-chat" />
+    <p class="hint">填写你在对应服务商账号下可用的模型 ID，具体请参考各家官方文档。</p>
 
     <button id="save-btn">保存</button>
     <span id="saved"></span>

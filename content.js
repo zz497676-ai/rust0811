@@ -10,35 +10,56 @@
   const CHUNK_CHAR_BUDGET = 3000;
   const ALLOWED_CLASSES = new Set(["arf-hi", "arf-lo", "arf-pos", "arf-neg"]);
 
-  function findArticleContainer() {
+  const EXCLUDED_ANCESTORS_SELECTOR = "nav, header, footer, aside, script, style, noscript, [contenteditable='true']";
+  const BLOCK_CHILD_SELECTOR = ":scope > div, :scope > section, :scope > article, :scope > ul, :scope > ol, :scope > table, :scope > header, :scope > footer, :scope > p, :scope > li";
+
+  // An element counts as "paragraph-like" if it directly holds text/inline
+  // content with no block-level children of its own. Standard <p>-based
+  // sites satisfy this trivially; div-heavy SPA sites (e.g. 小红书) that
+  // never use <p> also produce qualifying <div>/<span>/<li> leaves this way.
+  function isParagraphLike(el) {
+    return el.querySelectorAll(BLOCK_CHILD_SELECTOR).length === 0;
+  }
+
+  // Drop any candidate that itself contains another candidate, keeping only
+  // the innermost text-holding element so we don't double-count nested spans.
+  function dedupeNested(elements) {
+    return elements.filter((el) => !elements.some((other) => other !== el && el.contains(other)));
+  }
+
+  function findParagraphLikeBlocks(root) {
+    const all = root.querySelectorAll("p, div, span, li");
+    const candidates = [];
+    for (const el of all) {
+      if (el.closest(EXCLUDED_ANCESTORS_SELECTOR)) continue;
+      if (!isParagraphLike(el)) continue;
+      if (el.innerText.trim().length < MIN_PARAGRAPH_LENGTH) continue;
+      candidates.push(el);
+    }
+    return dedupeNested(candidates);
+  }
+
+  function findArticleContainer(blocks) {
     const explicit = document.querySelector("article");
     if (explicit && explicit.innerText.trim().length > 200) return explicit;
 
-    // Fallback heuristic: pick the element whose direct <p> children hold
-    // the most total text, ignoring nav/header/footer/aside chrome.
+    // Fallback heuristic: pick the element whose contained paragraph-like
+    // blocks hold the most total text, ignoring nav/header/footer/aside chrome.
     const candidates = document.querySelectorAll("main, [role='main'], div, section");
     let best = null;
     let bestScore = 0;
     for (const el of candidates) {
       if (el.closest("nav, header, footer, aside")) continue;
-      const paragraphs = el.querySelectorAll(":scope > p, :scope > div > p");
       let score = 0;
-      for (const p of paragraphs) score += p.innerText.trim().length;
+      for (const b of blocks) {
+        if (el.contains(b)) score += b.innerText.trim().length;
+      }
       if (score > bestScore) {
         bestScore = score;
         best = el;
       }
     }
     return best || document.body;
-  }
-
-  function collectParagraphs(container) {
-    const all = container.querySelectorAll("p");
-    return Array.from(all).filter((p) => {
-      if (p.closest("nav, header, footer, aside, script, style, noscript")) return false;
-      if (p.closest("[contenteditable='true']")) return false;
-      return p.innerText.trim().length >= MIN_PARAGRAPH_LENGTH;
-    });
   }
 
   function escapeHtml(str) {
@@ -144,8 +165,10 @@
   }
 
   async function run() {
-    const container = findArticleContainer();
-    const paragraphs = collectParagraphs(container);
+    const allBlocks = findParagraphLikeBlocks(document.body);
+    const container = findArticleContainer(allBlocks);
+    let paragraphs = allBlocks.filter((b) => container.contains(b));
+    if (paragraphs.length === 0) paragraphs = allBlocks; // container heuristic found nothing usable, use everything
 
     if (paragraphs.length === 0) {
       showBadge("未能在本页找到可识别的文章正文。");
