@@ -1,0 +1,40 @@
+/* Injected alongside content.js. Keep selectors scoped to our own classes
+   so we never clobber the host page's styling. */
+
+.arf-hi {
+  font-size: 1.15em;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.arf-lo {
+  font-size: 0.85em;
+  opacity: 0.62;
+}
+
+.arf-pos {
+  color: #1a7f37;
+}
+
+.arf-neg {
+  color: #cf222e;
+}
+
+p.arf-processed {
+  transition: opacity 0.2s ease;
+}
+
+.arf-status-badge {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 2147483647;
+  background: #1f2328;
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+}
